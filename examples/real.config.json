@@ -1,0 +1,22 @@
+{
+  "stateDir": "../.state/real",
+  "http": { "host": "127.0.0.1", "port": 7878 },
+  "repository": { "path": "./demo-repo", "baseBranch": "main", "source": "github" },
+  "sources": {
+    "github": { "kind": "github", "repo": "acme/demo-app", "account": "superagent-bot", "dryRun": true, "receiveAll": true },
+    "feishu": { "kind": "feishu", "botOpenId": "ou_superagent_bot", "dryRun": true }
+  },
+  "settings": {
+    "outbound": "auto",
+    "policy": {
+      "mode": "observe",
+      "sources": {
+        "github": { "allowed": [{ "id": "alice", "name": "Alice" }] },
+        "feishu": { "allowed": [{ "id": "ou_alice", "name": "Alice" }] }
+      }
+    },
+    "eval": { "timeoutSeconds": 180, "assessor": "heuristic" },
+    "router": { "agent": "claude" },
+    "executor": { "maxWorkers": 2, "agent": "claude", "turnTimeoutMinutes": 30 }
+  }
+}

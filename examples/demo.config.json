@@ -1,0 +1,23 @@
+{
+  "stateDir": "../.state/demo",
+  "http": { "host": "127.0.0.1", "port": 7878 },
+  "repository": { "path": "./demo-repo", "baseBranch": "main", "source": "github" },
+  "sources": {
+    "github": { "kind": "github", "repo": "acme/demo-app", "account": "superagent-bot", "dryRun": true, "receiveAll": true },
+    "gitlab": { "kind": "gitlab", "project": "acme/demo-app", "account": "superagent-bot", "dryRun": true },
+    "feishu": { "kind": "feishu", "botOpenId": "ou_superagent_bot", "dryRun": true }
+  },
+  "settings": {
+    "outbound": "auto",
+    "policy": {
+      "mode": "observe",
+      "sources": {
+        "github": { "allowed": [{ "id": "alice", "name": "Alice" }], "bots": [{ "id": "dependabot[bot]" }] },
+        "gitlab": { "allowed": [{ "id": "alice", "name": "Alice" }] },
+        "feishu": { "allowed": [{ "id": "ou_alice", "name": "Alice" }] }
+      }
+    },
+    "eval": { "timeoutSeconds": 120, "assessor": "heuristic" },
+    "executor": { "maxWorkers": 2, "agent": "mock" }
+  }
+}

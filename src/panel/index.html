@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Superagent</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --line: #e7e8ec; --line-strong: #d9dbe1; --text: #111318; --sub: #4b5060; --muted: #8a8f9c;
+    --accent: #4f46e5; --accent-soft: #eef0ff; --amber: #b45309; --amber-soft: #fff6e6; --green: #0f8a5f; --green-soft: #e8f7f0;
+    --red: #c2283b; --red-soft: #fdecee; --sky: #0369a1; --sky-soft: #e8f4fb; --gray-soft: #f1f2f5;
+    --radius: 12px; --shadow: 0 1px 2px rgba(16, 19, 26, .04), 0 1px 1px rgba(16, 19, 26, .03);
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Inter", "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  code { font-family: var(--mono); font-size: 12.5px; background: var(--gray-soft); padding: 1px 5px; border-radius: 5px; }
+
+  /* Layout */
+  .app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+  aside { position: sticky; top: 0; height: 100vh; background: var(--panel); border-right: 1px solid var(--line); padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px; }
+  .logo { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, #6366f1, #8b5cf6); display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; box-shadow: 0 2px 6px rgba(99, 102, 241, .35); }
+  .brand b { font-size: 15px; letter-spacing: -.01em; } .brand span { display: block; font-size: 11.5px; color: var(--muted); }
+  .nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--sub); font-weight: 500; text-decoration: none; }
+  .nav a:hover { background: var(--gray-soft); color: var(--text); }
+  .nav a.on { background: var(--accent-soft); color: var(--accent); }
+  .nav svg { width: 17px; height: 17px; flex: none; opacity: .85; }
+  .nav .count { margin-left: auto; background: var(--amber); color: #fff; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 0 7px; line-height: 18px; }
+  .aside-foot { margin-top: auto; padding: 12px 10px 0; border-top: 1px solid var(--line); display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+  .aside-foot .kv { display: flex; justify-content: space-between; } .aside-foot .kv b { color: var(--sub); font-weight: 500; }
+  main { padding: 28px 36px 80px; max-width: 1180px; width: 100%; }
+  .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+  .page-head h1 { font-size: 22px; letter-spacing: -.02em; margin: 0; } .page-head p { margin: 4px 0 0; color: var(--muted); }
+  h2 { font-size: 13px; font-weight: 600; color: var(--sub); text-transform: none; margin: 28px 0 10px; display: flex; align-items: center; gap: 8px; }
+  h2:first-child { margin-top: 0; }
+
+  /* Surfaces */
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; margin-bottom: 10px; }
+  .card.flat { box-shadow: none; }
+  .card.hover:hover { border-color: var(--line-strong); }
+  .card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .card-head .grow { flex: 1; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .muted { color: var(--muted); } .sub { color: var(--sub); } .small { font-size: 12.5px; } .tiny { font-size: 11.5px; }
+  .title { font-weight: 600; color: var(--text); } a.title:hover { color: var(--accent); text-decoration: none; }
+  .stack > * + * { margin-top: 8px; }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+  @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } }
+  @media (max-width: 860px) { .app { grid-template-columns: 1fr; } aside { position: static; height: auto; } main { padding: 20px; } }
+
+  /* Pills */
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; background: var(--gray-soft); color: var(--sub); white-space: nowrap; line-height: 20px; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .75; }
+  .pill.plain::before { display: none; }
+  .pill.amber { background: var(--amber-soft); color: var(--amber); } .pill.green { background: var(--green-soft); color: var(--green); }
+  .pill.red { background: var(--red-soft); color: var(--red); } .pill.sky { background: var(--sky-soft); color: var(--sky); } .pill.indigo { background: var(--accent-soft); color: var(--accent); }
+  .src { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--sub); }
+  .src svg { width: 14px; height: 14px; }
+
+  /* Controls */
+  button { font: inherit; font-weight: 500; font-size: 13px; border: 1px solid var(--line-strong); background: var(--panel); color: var(--text); border-radius: 8px; padding: 6px 13px; cursor: pointer; transition: background .12s, border-color .12s; }
+  button:hover { background: var(--gray-soft); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; } button.primary:hover { background: #4338ca; }
+  button.danger { color: var(--red); } button.danger:hover { background: var(--red-soft); border-color: #f5c2c9; }
+  button.ghost { border-color: transparent; background: transparent; color: var(--sub); } button.ghost:hover { background: var(--gray-soft); }
+  button.small { padding: 3px 9px; font-size: 12px; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  textarea, input, select { font: inherit; border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 10px; width: 100%; background: #fff; color: var(--text); outline: none; transition: border-color .12s, box-shadow .12s; }
+  textarea:focus, input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 70, 229, .12); }
+  textarea { min-height: 96px; resize: vertical; line-height: 1.55; }
+  textarea.code { font-family: var(--mono); font-size: 12.5px; min-height: 460px; }
+  .field { display: grid; gap: 6px; } .field label { font-size: 12px; font-weight: 500; color: var(--sub); }
+  .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; } .fields .full { grid-column: 1 / -1; }
+  .tabs { display: inline-flex; gap: 2px; padding: 3px; background: var(--gray-soft); border-radius: 9px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tabs a { padding: 5px 12px; border-radius: 7px; color: var(--sub); font-weight: 500; font-size: 13px; text-decoration: none; }
+  .tabs a.on { background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+
+  /* Content blocks */
+  .comment { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; }
+  .comment-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #fafbfc; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--sub); }
+  .comment-body { padding: 12px 14px; }
+  .md { word-break: break-word; } .md p { margin: 0 0 8px; } .md p:last-child { margin-bottom: 0; } .md ul { margin: 4px 0 8px; padding-left: 20px; }
+  .md h3, .md h4 { font-size: 14px; margin: 10px 0 6px; } .md blockquote { margin: 0 0 8px; padding: 2px 12px; border-left: 3px solid var(--line-strong); color: var(--muted); }
+  pre { font-family: var(--mono); font-size: 12.5px; line-height: 1.6; background: #f7f8fa; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow: auto; max-height: 460px; white-space: pre-wrap; word-break: break-word; margin: 0; }
+  .quote { border-left: 3px solid var(--line-strong); padding: 2px 0 2px 12px; color: var(--sub); font-size: 13px; margin-bottom: 10px; }
+  .diff { white-space: pre; padding: 0; } .diff div { padding: 0 12px; } .diff .add { background: #e9f8ef; color: #116b3a; } .diff .del { background: #fdecee; color: #a11d2e; }
+  .diff .hunk { color: var(--sky); background: #f1f7fc; } .diff .meta { color: var(--muted); }
+  .empty { text-align: center; padding: 34px 16px; color: var(--muted); }
+  .empty .icon { width: 42px; height: 42px; margin: 0 auto 10px; border-radius: 50%; background: var(--green-soft); color: var(--green); display: grid; place-items: center; font-size: 20px; }
+  .empty b { display: block; color: var(--text); font-size: 15px; margin-bottom: 2px; }
+
+  /* Tables / lists */
+  table { width: 100%; border-collapse: collapse; } th { text-align: left; font-size: 12px; font-weight: 500; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fafbfc; }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; } tr:last-child td { border-bottom: 0; }
+  .table { padding: 0; overflow: hidden; } tr.link { cursor: pointer; } tr.link:hover td { background: #fafbff; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; text-decoration: none; color: inherit; box-shadow: var(--shadow); }
+  .kpi:hover { border-color: var(--line-strong); text-decoration: none; } .kpi b { display: block; font-size: 24px; font-weight: 600; letter-spacing: -.02em; } .kpi span { font-size: 12.5px; color: var(--muted); }
+  .props { display: grid; grid-template-columns: 96px 1fr; gap: 8px 10px; font-size: 13px; } .props dt { color: var(--muted); } .props dd { margin: 0; word-break: break-word; }
+
+  /* Timeline */
+  .timeline { position: relative; padding-left: 26px; }
+  .timeline::before { content: ""; position: absolute; left: 9px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
+  .tl { position: relative; margin-bottom: 14px; }
+  .tl .dot { position: absolute; left: -26px; top: 12px; width: 20px; height: 20px; border-radius: 50%; background: var(--panel); border: 2px solid var(--line-strong); display: grid; place-items: center; font-size: 10px; color: var(--muted); }
+  .tl.agent .dot { border-color: var(--accent); color: var(--accent); } .tl.bot .dot { border-style: dashed; }
+  .tl.agent .comment { border-color: #d9dcfb; } .tl.agent .comment-head { background: #f6f7ff; }
+  .events div { display: grid; grid-template-columns: 74px 160px 1fr; gap: 10px; padding: 5px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+  .events div:last-child { border-bottom: 0; } .events b { font-weight: 500; font-family: var(--mono); font-size: 12px; }
+  .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .toast { position: fixed; bottom: 22px; left: 50%; transform: translate(-50%, 10px); background: #111318; color: #fff; padding: 9px 16px; border-radius: 10px; opacity: 0; transition: all .18s; font-size: 13px; pointer-events: none; box-shadow: 0 6px 24px rgba(0, 0, 0, .18); }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand"><div class="logo">S</div><div><b>Superagent</b><span>oh-my-superagent</span></div></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="aside-foot" id="sys"></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const ICON = {
+  overview: '<path d="M3 12l9-8 9 8M5 10v10h14V10"/>',
+  tickets: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h4"/>',
+  threads: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  evals: '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
+  events: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+  simulate: '<path d="M5 3l14 9-14 9V3z"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+}
+const SRC_ICON = {
+  github: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.6 0 0 3.6 0 8c0 3.5 2.3 6.5 5.5 7.6.4.1.5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.2 1.9.9 2.3.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8.6-.2 1.3-.3 2-.3s1.4.1 2 .3c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.7-3.6 3.9.3.3.5.8.5 1.5v2.2c0 .2.1.5.6.4C13.7 14.5 16 11.5 16 8c0-4.4-3.6-8-8-8z"/></svg>',
+  gitlab: '<svg viewBox="0 0 16 16" fill="#e24329"><path d="M8 15 10.9 6H5.1L8 15zM1.1 6 0 9.4c-.1.3 0 .6.3.8L8 15 1.1 6zm0 0h4L3.4.7c-.1-.3-.5-.3-.6 0L1.1 6zM14.9 6 16 9.4c.1.3 0 .6-.3.8L8 15l6.9-9zm0 0h-4L12.6.7c.1-.3.5-.3.6 0L14.9 6z"/></svg>',
+  feishu: '<svg viewBox="0 0 16 16"><path fill="#00d6b9" d="M2 4.5 8.2 9 15 3.2c-.6-.3-1.3-.2-1.9.2L8.4 7 4.6 3.7C3.9 3.2 2.9 3.4 2 4.5z"/><path fill="#3370ff" d="M1 6.4v5.2c0 1 .8 1.9 1.9 1.9h8.5c.8 0 1.5-.4 1.9-1.1L15.6 4 8.2 10.3 1 6.4z"/></svg>',
+}
+const NAV = [['overview', '概览'], ['tickets', '工单'], ['threads', '会话'], ['evals', '评估'], ['events', '事件日志'], ['simulate', '模拟事件'], ['settings', '设置']]
+const STAGE = {
+  'person/delivery': ['投递失败', 'red'], 'person/answer': ['待你回答', 'amber'], 'person/review': ['待你评审', 'amber'], 'person/blocked': ['受阻', 'red'], 'person/failed': ['失败', 'red'],
+  'working/queued': ['排队中', 'sky'], working: ['执行中', 'sky'], idle: ['等待新消息', ''],
+}
+const OUTCOME = { completed: ['已完成', 'green'], merged: ['PR 已合并', 'green'], closed: ['PR 已关闭', ''], dropped: ['无需处理', ''], stopped: ['已停止', ''] }
+const PURPOSE = { acknowledgement: '确认', answer: '回答', result: '结果', attention: '提问', pull_request: 'Pull Request' }
+const KIND = { accept: ['接单', 'green'], ignore: ['忽略', ''], stop: ['停止', 'red'], unavailable: ['评估未完成', 'red'] }
+const REPORT = { ready: 'green', blocked: 'red', failed: 'red', waiting: '', dropped: '', progress: 'sky' }
+const $ = sel => document.querySelector(sel)
+const EDITS = {}
+const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const time = value => value ? new Date(value).toLocaleString('zh-CN', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
+const ago = value => { if (!value) return ''; const s = (Date.now() - Date.parse(value)) / 1000; return s < 60 ? '刚刚' : s < 3600 ? `${s / 60 | 0} 分钟前` : s < 86400 ? `${s / 3600 | 0} 小时前` : time(value) }
+const pill = (text, tone = '', plain = false) => `<span class="pill ${tone}${plain ? ' plain' : ''}">${esc(text)}</span>`
+const src = name => { const kind = String(name ?? '').split(':')[0]; return `<span class="src">${SRC_ICON[kind] ?? ''}${esc(name)}</span>` }
+const stagePill = row => { const [text, tone] = row.ended ? OUTCOME[row.ended.outcome] ?? ['已结束', ''] : STAGE[row.stage] ?? [row.stage, '']; return pill(text, tone) }
+const capPill = cap => cap === 'write' ? pill('可写', 'indigo', true) : pill('只读', '', true)
+const head = (title, desc = '', right = '') => `<div class="page-head"><div><h1>${title}</h1>${desc ? `<p>${desc}</p>` : ''}</div><div class="row">${right}</div></div>`
+const empty = (title, text, icon = '✓') => `<div class="card flat"><div class="empty"><div class="icon">${icon}</div><b>${esc(title)}</b>${esc(text)}</div></div>`
+
+/** A small Markdown subset: fences, headings, quotes, lists, bold, inline code and links. */
+function md(text) {
+  const out = []
+  const inline = line => esc(line).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank">$1</a>')
+  const lines = String(text ?? '').split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (line.startsWith('```')) { const body = []; while (++i < lines.length && !lines[i].startsWith('```')) body.push(lines[i]); out.push(`<pre>${esc(body.join('\n'))}</pre>`); continue }
+    if (/^#{1,6}\s/.test(line)) { out.push(`<h4>${inline(line.replace(/^#+\s/, ''))}</h4>`); continue }
+    if (line.startsWith('>')) { out.push(`<blockquote>${inline(line.replace(/^>\s?/, ''))}</blockquote>`); continue }
+    if (/^\s*[-*]\s/.test(line)) { const items = []; while (i < lines.length && /^\s*[-*]\s/.test(lines[i])) items.push(`<li>${inline(lines[i++].replace(/^\s*[-*]\s/, ''))}</li>`); i--; out.push(`<ul>${items.join('')}</ul>`); continue }
+    if (line.trim()) out.push(`<p>${inline(line)}</p>`)
+  }
+  return `<div class="md">${out.join('')}</div>`
+}
+function diff(text) {
+  return `<pre class="diff">${String(text).split('\n').map(line => {
+    const cls = line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff ') || line.startsWith('index ') ? 'meta' : line.startsWith('@@') ? 'hunk' : line.startsWith('+') ? 'add' : line.startsWith('-') ? 'del' : ''
+    return `<div class="${cls}">${esc(line) || ' '}</div>`
+  }).join('')}</pre>`
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(`/api${path}`, { headers: { 'content-type': 'application/json' }, ...options, body: options.body === undefined ? undefined : JSON.stringify(options.body) })
+  const type = response.headers.get('content-type') ?? ''
+  const data = type.includes('json') ? await response.json() : await response.text()
+  if (!response.ok) throw new Error(data?.values?.message ?? data?.error ?? response.statusText)
+  return data
+}
+function toast(text) { const el = $('#toast'); el.textContent = text; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 2200) }
+async function act(path, body, done = '已完成') {
+  try { await api(path, { method: 'POST', body: body ?? {} }); toast(done); render.html = undefined; render() } catch (error) { toast(`失败：${error.message}`) }
+}
+
+// ── Pages ──────────────────────────────────────────────────────────────────
+const views = {
+  async overview() {
+    const o = await api('/overview')
+    const n = o.needs
+    const total = n.tickets.length + n.unavailable.length + (o.system.outbound === 'review' ? n.drafts.length : 0)
+    let html = head('概览', `Router 统一对外说话 · outbound=<b>${esc(o.system.outbound)}</b> · ${total ? `有 <b>${total}</b> 件事等人` : '观察中'}`)
+    html += `<div class="kpis" style="margin-bottom:16px">
+      <a class="kpi" href="#/tickets"><b>${o.load.open}</b><span>开放工单</span></a>
+      <a class="kpi" href="#/evals"><b>${o.activity.accepted}</b><span>今日接单</span></a>
+      <div class="kpi"><b>${o.activity.sent}</b><span>已发出消息</span></div>
+      <div class="kpi"><b>${o.router?.inbox ?? 0}</b><span>Router 收件箱</span></div>
+    </div>`
+    html += `<h2>Main Session（Router）</h2><div class="card flat"><pre style="max-height:160px">${esc((o.router?.log ?? []).slice(-12).join('\n') || '尚无 Router 回合')}</pre></div>`
+    html += `<h2>Watchdog <button class="small" onclick="act('/watchdog/tick', {}, '已巡检')">立即巡检</button></h2>`
+    const wd = o.watchdog?.actions ?? []
+    html += wd.length ? `<div class="card flat">${wd.slice(0, 8).map(a => `<div class="small" style="padding:4px 0;border-bottom:1px dashed var(--line)"><b>${esc(a.action)}</b> ${esc(a.detail)} <span class="muted">${ago(a.at)}</span></div>`).join('')}</div>`
+      : empty('Watchdog 安静', '卡住的工单会被自动 retry；也可点「立即巡检」。', '⏱')
+    html += `<h2>需要人 ${total ? pill(total, 'amber', true) : ''}</h2>`
+    if (!total) html += empty('一切就绪', 'Worker 提问、失败工单、observe 异常会出现在这里。Router 已自动对外说话。')
+    if (o.system.outbound === 'review') html += n.drafts.map(draftCard).join('')
+    html += n.tickets.map(t => `<div class="card"><div class="card-head">${stagePill(t)} <a class="title" href="#/ticket/${t.id}">${esc(t.title)}</a><span class="grow"></span><span class="muted small">${esc(t.requester)} · ${ago(t.updatedAt)}</span></div>
+      ${t.attention ? `<div class="quote">${esc(t.attention)}</div><p class="muted small" style="margin:0">问题已由 Router 发到原会话。在那里回答，或到工单页直接告诉 worker。</p>` : ''}
+      ${t.delivery ? `<div class="quote">${esc(t.delivery)}</div>` : ''}
+      ${t.report && !t.attention ? `<div class="sub small">${esc(t.report.summary)}</div>` : ''}
+      <div class="actions">${t.canRetry ? `<button onclick="act('/tickets/${t.id}/retry', {}, '已重试')">重试</button>` : ''}<button onclick="location.hash='#/ticket/${t.id}'">打开工单</button></div></div>`).join('')
+    html += n.unavailable.map(d => `<div class="card"><div class="card-head">${pill('评估未完成', 'red')} ${src(d.threadKey)}<span class="grow"></span><span class="muted small">${ago(d.at)}</span></div>
+      <div class="sub">${esc(d.reasons.map(r => r.text).join('；'))}</div>
+      <div class="actions"><button class="ghost" onclick="act('/decisions/${encodeURIComponent(d.id)}/dismiss', {}, '已忽略')">忽略</button><button onclick="act('/triggers/${encodeURIComponent(d.trigger?.id)}/reevaluate', {}, '已重新排队')">重新评估</button></div></div>`).join('')
+    if (n.refused.length) {
+      html += `<h2>不在名单里的人呼叫了 agent</h2>` + n.refused.map(d => `<div class="card hover"><div class="card-head">${src(d.trigger.source)} <b>${esc(d.trigger.from)}</b><span class="grow"></span><span class="muted small">${ago(d.at)}</span></div>
+        <div class="quote ellipsis">${esc(d.trigger.text)}</div>
+        <div class="actions"><button class="primary small" onclick="allow('${esc(d.trigger.source)}', '${esc(d.trigger.from)}')">加入允许列表</button></div></div>`).join('')
+    }
+    if (o.problems.length) html += `<h2>系统问题</h2>` + o.problems.map(p => `<div class="card"><div class="row">${pill(p.kind, 'red')}<span>${esc(p.text)}</span></div></div>`).join('')
+    const a = o.activity
+    html += `<h2>近 24 小时</h2><div class="kpis">${kpi('收到事件', a.triggers, '#/threads')}${kpi('接单', a.accepted, '#/evals?kind=accept')}${kpi('本会接单（observe）', a.wouldAccept, '#/evals?kind=would_accept')}${kpi('忽略', a.ignored, '#/evals?kind=ignore')}${kpi('已发消息', a.sent, '#/events')}${kpi('Worker', `${o.load.active} / ${o.load.max}`, '#/tickets')}</div>`
+    html += `<h2>来源</h2><div class="card table"><table>${o.sources.map(s => `<tr><td style="width:180px">${src(s.kind)} <b style="margin-left:4px">${esc(s.id)}</b></td>
+      <td>${s.enabled ? pill(s.facts.dryRun ? 'dry-run' : '已连接', s.facts.dryRun ? 'sky' : 'green') : pill('关闭')}</td>
+      <td class="small muted">${esc(Object.entries(s.facts).filter(([k]) => !['dryRun'].includes(k)).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(',') || '全部' : v}`).join(' · '))}</td>
+      <td class="small"><code>/webhooks/${esc(s.id)}</code></td></tr>`).join('')}</table></div>`
+    return html
+  },
+
+  async tickets(query) {
+    const filter = query.get('filter') ?? 'open'
+    const rows = await api(`/tickets?filter=${filter}`)
+    const tabs = [['open', '进行中'], ['person', '等你'], ['working', '执行中'], ['idle', '等待新消息'], ['ended', '已结束'], ['all', '全部']]
+    return head('工单', '每个工单在自己的 git worktree 和 agent 会话里执行。') + `<div class="tabs">${tabs.map(([k, v]) => `<a class="${k === filter ? 'on' : ''}" href="#/tickets?filter=${k}">${v}</a>`).join('')}</div>`
+      + (rows.length ? `<div class="card table"><table><tr><th>状态</th><th>工单</th><th>发起人</th><th>最近报告</th><th style="text-align:right">更新</th></tr>${rows.map(t => `<tr class="link" onclick="location.hash='#/ticket/${t.id}'">
+        <td style="width:120px">${stagePill(t)}</td>
+        <td><div class="title">${esc(t.title)}</div><div class="row tiny muted" style="margin-top:3px">${capPill(t.capability)}${t.strength === 'inferred' ? pill('主动', '', true) : ''}<code>${esc(t.name)}</code></div></td>
+        <td class="small">${src(t.requester)}</td>
+        <td class="small sub" style="max-width:340px">${t.report ? esc(t.report.summary.slice(0, 110)) : '<span class="muted">—</span>'}</td>
+        <td class="small muted" style="text-align:right;white-space:nowrap">${ago(t.updatedAt)}</td></tr>`).join('')}</table></div>` : empty('没有工单', '在 GitHub 或飞书里 /agent 呼叫它，或去「模拟事件」试一下。', '·'))
+  },
+
+  async ticket(query, id) {
+    const t = await api(`/tickets/${id}`)
+    const m = t.mandate
+    const drafts = t.messages.filter(x => x.status === 'draft').reverse()
+    const sent = t.messages.filter(x => x.status !== 'draft').reverse()
+    let main = ''
+    if (t.attention) main += `<div class="card" style="border-color:#f3d7a6;background:var(--amber-soft)"><div class="card-head">${pill('worker 在等你回答', 'amber')}</div>${md(t.attention)}</div>`
+    main += drafts.map(draftCard).join('')
+    main += `<h2>原始请求</h2>` + t.origin.map(o => comment(o.actor.id, o.text, `${src(o.source)} · ${time(o.at)}${o.url ? ` · <a href="${esc(o.url)}" target="_blank">原文</a>` : ''}`)).join('<div style="height:8px"></div>')
+    const later = t.inputs.filter(i => !t.origin.some(o => o.id === i.triggerId))
+    if (later.length) main += `<h2>之后收到的消息</h2><div class="stack">${later.map(i => comment(i.from ?? i.kind, i.text, `${pill(i.kind, '', true)} ${i.delivered ? '' : pill('未投递', 'amber')} · ${ago(i.at)}`)).join('')}</div>`
+    if (sent.length) main += `<h2>agent 对外说的话</h2><div class="stack">${sent.map(x => comment(`agent · ${PURPOSE[x.purpose] ?? x.purpose}`, x.text,
+      `${pill(x.status === 'sent' ? '已发送' : x.status === 'dropped' ? '已丢弃' : '发送中', x.status === 'sent' ? 'green' : x.status === 'dropped' ? '' : 'sky')}${x.result?.url ? ` · <a href="${esc(x.result.url)}" target="_blank">查看</a>` : ''}${x.dropped ? ` · ${esc(x.dropped.reason)}` : ''}${x.error ? ` · <span style="color:var(--red)">${esc(x.error)}</span>` : ''}`)).join('')}</div>`
+    if (t.artifacts.length) {
+      const diffs = t.artifacts.filter(a => a.kind === 'diff')
+      main += `<h2>产物</h2><div class="card"><div class="row">${t.artifacts.map(a => `<button class="small ${a.kind === 'diff' ? '' : 'ghost'}" onclick="showArtifact('${esc(a.path)}', '${a.kind}')">${{ diff: '代码改动', log: '运行日志', prompt: '提示词', tests: '测试' }[a.kind] ?? a.kind} · 第 ${a.turn} 轮</button>`).join('')}</div>
+        ${diffs[0] ? `<div class="muted small" style="margin-top:8px">${esc(diffs[0].summary ?? '')}</div>` : ''}<div id="artifact" style="margin-top:10px"></div></div>`
+    }
+    if (!t.ended || t.ended.by !== 'human') main += `<h2>直接告诉 worker</h2><div class="card"><textarea id="takeover" placeholder="例如：先别改接口，只修空值判断。${t.ended ? '（会恢复这个工单）' : ''}"></textarea><div class="actions"><button class="primary" onclick="takeover('${t.id}')">发送</button></div></div>`
+
+    let side = `<div class="card"><dl class="props">
+      <dt>状态</dt><dd>${stagePill(t)}</dd><dt>能力</dt><dd>${capPill(m.capability)}</dd><dt>发起人</dt><dd>${src(t.requester)}</dd>
+      <dt>强度</dt><dd>${m.strength === 'explicit' ? '明确请求' : '推断（主动）'}</dd><dt>依据</dt><dd>${esc(m.basis.via)}${m.basis.rules ? ` · ${esc(m.basis.rules.join(','))}` : ''}</dd>
+      <dt>策略版本</dt><dd><code>${esc(m.policyVersion)}</code></dd><dt>创建</dt><dd>${time(t.createdAt)}</dd>${t.ended ? `<dt>结束</dt><dd>${time(t.ended.at)} · ${esc(t.ended.by)}${t.ended.reason ? `<div class="muted small">${esc(t.ended.reason)}</div>` : ''}</dd>` : ''}
+      </dl><div class="actions">${t.canRetry ? `<button onclick="act('/tickets/${t.id}/retry', {}, '已重试')">重试</button>` : ''}${!t.ended ? `<button class="danger" onclick="if(confirm('停止此工单？授权会被撤回。')) act('/tickets/${t.id}/stop', {}, '已停止')">停止</button>` : ''}</div></div>`
+    side += `<h2>授权范围</h2><div class="card small sub">${esc(m.scope)}</div>`
+    if (t.follows.length) side += `<h2>跟随</h2><div class="card stack">${t.follows.map(f => `<div class="row small">${src(f.thread)} ${f.own ? pill('自己开的', '', true) : ''} ${f.closed ? pill(OUTCOME[f.closed.outcome]?.[0] ?? f.closed.outcome, 'green') : pill('open', 'sky')}${f.url ? ` <a href="${esc(f.url)}" target="_blank">打开</a>` : ''}</div>`).join('')}</div>`
+    if (t.execution) side += `<h2>执行环境</h2><div class="card"><dl class="props small"><dt>分支</dt><dd><code>${esc(t.execution.branch)}</code></dd><dt>基于</dt><dd><code>${esc(t.execution.base)}</code></dd><dt>agent</dt><dd>${esc(t.execution.backend)}</dd><dt>目录</dt><dd class="tiny muted">${esc(t.execution.directory)}</dd></dl></div>`
+    side += `<h2>派工</h2>${t.assignments.map(a => `<div class="card small"><div class="card-head">${pill(a.state === 'running' ? '运行中' : a.state === 'pending' ? '待启动' : '已结束', a.state === 'running' ? 'sky' : '')}<span class="muted">${a.turns} 轮</span><span class="grow"></span><span class="muted tiny">${time(a.createdAt)}</span></div>
+      ${a.report ? `<div class="row" style="align-items:flex-start;flex-wrap:nowrap">${pill(a.report.state, REPORT[a.report.state] ?? '')}<span class="sub">${esc(a.report.summary)}</span></div>` : ''}
+      ${a.recovery ? `<div class="muted tiny" style="margin-top:6px">${esc(a.recovery)}</div>` : ''}${a.endedReason ? `<div class="muted tiny" style="margin-top:6px">结束：${esc(a.endedReason)}</div>` : ''}</div>`).join('')}`
+    side += `<h2>事件</h2><div class="card events" style="padding:8px 14px">${t.events.slice(0, 30).map(e => `<div style="grid-template-columns:64px 1fr"><span class="muted">${ago(e.at)}</span><b>${esc(e.type)}</b></div>`).join('')}</div>`
+    return head(esc(t.title), `<code>${esc(t.name)}</code>`, `<a href="#/tickets">← 工单</a>`) + `<div class="split"><div>${main}</div><div>${side}</div></div>`
+  },
+
+  async threads(query) {
+    const filter = query.get('filter') ?? 'all'
+    const rows = await api(`/threads?filter=${filter}`)
+    const tabs = [['all', '全部'], ['subscribed', '有工单订阅'], ['evaluating', '评估中']]
+    return head('会话', 'Issue、PR、飞书话题：每个都是一条按时间排列的消息流。') + `<div class="tabs">${tabs.map(([k, v]) => `<a class="${k === filter ? 'on' : ''}" href="#/threads?filter=${k}">${v}</a>`).join('')}</div>`
+      + (rows.length ? `<div class="card table"><table><tr><th>会话</th><th>状态</th><th>最近判断</th><th style="text-align:right">最近</th></tr>${rows.map(r => `<tr class="link" onclick="location.hash='#/thread/${encodeURIComponent(r.key)}'">
+        <td><div class="title">${esc(r.label ?? r.key)}</div><div class="tiny" style="margin-top:2px">${src(r.key)}</div></td>
+        <td class="small">${r.evaluating ? pill('评估中', 'sky') : ''}${r.pending ? pill(`排队 ${r.pending}`, 'sky') : ''}${r.subscriptions.length ? pill(`${r.subscriptions.length} 个工单`, 'indigo', true) : ''}</td>
+        <td class="small sub">${r.lastDecision ? `${decisionPill(r.lastDecision)} <span class="muted">${esc(r.lastDecision.reasons.map(x => x.text).join('；').slice(0, 50))}</span>` : ''}</td>
+        <td class="small muted" style="text-align:right">${ago(r.lastAt)}</td></tr>`).join('')}</table></div>` : empty('还没有会话', '来源收到事件后会出现在这里。', '·'))
+  },
+
+  async thread(query, key) {
+    const t = await api(`/threads/${encodeURIComponent(key)}`)
+    const items = [
+      ...t.triggers.map(x => ({ at: x.at, html: `<div class="tl ${x.human ? '' : 'bot'}"><div class="dot">${x.human ? '人' : 'B'}</div>${comment(x.actor.id, x.text,
+        `${x.addressed ? pill(x.addressed === 'direct' ? '私聊' : '呼叫 agent', 'indigo', true) : ''} ${disposition(x.disposition)} · ${time(x.at)} <button class="ghost small" onclick="act('/triggers/${encodeURIComponent(x.id)}/reevaluate', {}, '已重新排队')">重新评估</button>`)}</div>` })),
+      ...t.messages.filter(x => x.status !== 'dropped').map(x => ({ at: x.sentAt ?? x.createdAt, html: `<div class="tl agent"><div class="dot">A</div>${comment(`agent · ${PURPOSE[x.purpose] ?? x.purpose}`, x.text, pill(x.status === 'sent' ? '已发送' : x.status === 'draft' ? '待批准' : '发送中', x.status === 'sent' ? 'green' : 'amber'))}</div>` })),
+    ].sort((a, b) => a.at.localeCompare(b.at))
+    let side = ''
+    if (t.tickets.length) side += `<h2>订阅的工单</h2>${t.tickets.map(x => `<div class="card hover"><div class="row">${stagePill(x)}<a class="title small" href="#/ticket/${x.id}">${esc(x.title)}</a></div></div>`).join('')}`
+    if (t.decisions.length) side += `<h2>判断</h2>${t.decisions.map(decisionCard).join('')}`
+    return head(esc(t.label ?? t.key), `${src(t.key)}${t.url ? ` · <a href="${esc(t.url)}" target="_blank">在平台打开</a>` : ''}`, `<a href="#/threads">← 会话</a>`)
+      + `<div class="split"><div class="timeline">${items.map(x => x.html).join('') || '<div class="muted">空</div>'}</div><div>${side}</div></div>`
+  },
+
+  async evals(query) {
+    const kind = query.get('kind') ?? ''
+    const rows = await api(`/decisions?filter=${kind}`)
+    const tabs = [['', '全部'], ['accept', '接单'], ['would_accept', '本会接单'], ['ignore', '忽略'], ['stop', '停止'], ['unavailable', '未完成']]
+    return head('评估', 'Router 对每批消息的判断。observe 模式下主动候选只记“本会接单”：确认它判断得对，再切到 auto。')
+      + `<div class="tabs">${tabs.map(([k, v]) => `<a class="${k === kind ? 'on' : ''}" href="#/evals?kind=${k}">${v}</a>`).join('')}</div>` + (rows.map(decisionCard).join('') || empty('没有记录', '', '·'))
+  },
+
+  async events() {
+    const rows = await api('/events')
+    return head('事件日志', '只追加不修改：系统里发生的每件事。') + `<div class="card events">${rows.map(e => `<div><span class="muted">#${e.seq}</span><b>${esc(e.type)}</b><span class="sub ellipsis">${e.data.ticketId ? `<a href="#/ticket/${esc(e.data.ticketId)}">${esc(e.data.ticketId)}</a> ` : ''}<span class="muted">${esc(JSON.stringify(e.data).slice(0, 200))}</span></span></div>`).join('') || '<div class="muted">空</div>'}</div>`
+  },
+
+  async simulate() {
+    const o = await api('/overview')
+    window.PRESETS = [
+      ['总结一个 bug', '名单内的人呼叫 agent 分析', { source: 'github', event: 'issue', number: 12, user: 'alice', title: '手机号注册用户登录崩溃', text: '/agent summarize 手机号注册的用户登录时报错 login crash' }],
+      ['要求修复', '只读工单交还 → 新开可写工单 → PR', { source: 'github', event: 'comment', number: 12, user: 'alice', text: '/agent fix src/greet.js "Helo" -> "Hello"' }],
+      ['陌生人呼叫', '不在允许列表：忽略', { source: 'github', event: 'comment', number: 12, user: 'mallory', text: '/agent fix everything' }],
+      ['没呼叫但像 bug', 'observe：只记“本会接单”', { source: 'github', event: 'issue', number: 13, user: 'alice', title: '启动崩溃', text: 'The app crashes with a stack trace on start.' }],
+      ['停止', '停止该会话上的工单', { source: 'github', event: 'comment', number: 12, user: 'alice', text: '/agent stop' }],
+      ['飞书 @agent', '群话题里呼叫', { source: 'feishu', event: 'comment', user: 'ou_alice', chat: 'oc_team', text: '@agent 总结一下 src/login.js 为什么会崩溃' }],
+    ].filter(([, , p]) => o.sources.some(s => s.id === p.source))
+    return head('模拟事件', '按平台原生 webhook 格式构造并签名，与真实事件走同一条解析路径。')
+      + `<div class="kpis" style="margin-bottom:18px">${PRESETS.map(([name, desc], i) => `<a class="kpi" href="javascript:void 0" onclick="preset(${i})"><span style="color:var(--text);font-weight:600;font-size:14px">${esc(name)}</span><br><span>${esc(desc)}</span></a>`).join('')}</div>
+      <div class="card"><div class="fields">
+        <div class="field"><label>来源</label><select id="s-source">${o.sources.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.kind)}</option>`).join('')}</select></div>
+        <div class="field"><label>事件</label><select id="s-event"><option value="comment">评论 / 消息</option><option value="issue">新 Issue</option><option value="pr_merged">PR 合并</option><option value="pr_closed">PR 关闭</option></select></div>
+        <div class="field"><label>Issue / PR 编号</label><input id="s-number" type="number" value="12"></div>
+        <div class="field"><label>发送者</label><input id="s-user" value="alice"></div>
+        <div class="field full"><label>标题（新 Issue）</label><input id="s-title" placeholder="可空"></div>
+        <div class="field"><label>飞书群 chat_id</label><input id="s-chat" placeholder="oc_team"></div>
+        <div class="field"><label>飞书话题 root（可空）</label><input id="s-root"></div>
+        <div class="field full"><label>内容</label><textarea id="s-text">/agent summarize 登录报错</textarea></div>
+      </div><div class="actions"><span id="s-out" class="muted small" style="margin-right:auto"></span><button class="primary" onclick="simulate()">发送事件</button></div></div>`
+  },
+
+  async settings() {
+    const s = await api('/settings')
+    const v = s.value
+    return head('设置', `策略版本 <code>${esc(s.version)}</code> · 规则、模式和各来源的名单共同决定版本；变更会通知受影响的工单。`)
+      + `<div class="kpis" style="margin-bottom:14px">
+        <div class="kpi"><span>处理</span><b style="font-size:16px;margin:4px 0 8px">${v.paused ? '已暂停' : '运行中'}</b><button class="small" onclick="act('/pause', { paused: ${!v.paused} })">${v.paused ? '恢复' : '暂停'}</button></div>
+        <div class="kpi"><span>对外消息</span><b style="font-size:16px;margin-top:4px">${v.outbound === 'review' ? '需你批准' : '自动发送'}</b></div>
+        <div class="kpi"><span>主动工作</span><b style="font-size:16px;margin-top:4px">${{ off: '关闭', observe: 'observe（只记录）', auto: 'auto' }[v.policy.mode]}</b></div>
+        <div class="kpi"><span>Worker</span><b style="font-size:16px;margin-top:4px">${esc(v.executor.agent)} · ${v.executor.maxWorkers} 并发</b></div></div>
+      <div class="card"><textarea class="code" id="settings">${esc(JSON.stringify(v, null, 2))}</textarea><div class="actions"><button class="primary" onclick="saveSettings()">保存</button></div></div>
+      <h2>保存历史</h2><div class="card events">${s.history.map(h => `<div><span class="muted">#${h.revision}</span><b>${esc(h.version)}</b><span class="muted">${time(h.at)} · ${esc(h.origin)}</span></div>`).join('') || '<div class="muted">尚未保存，使用配置文件里的设置。</div>'}</div>`
+  },
+}
+
+function kpi(label, value, href) { return `<a class="kpi" href="${href}"><b>${esc(value)}</b><span>${esc(label)}</span></a>` }
+function comment(who, text, meta = '') {
+  return `<div class="comment"><div class="comment-head"><b style="color:var(--text)">${esc(who)}</b><span class="grow" style="flex:1"></span><span class="row">${meta}</span></div><div class="comment-body">${md(text)}</div></div>`
+}
+function draftCard(d) {
+  const pr = d.purpose === 'pull_request'
+  const id = `draft-${d.id}`
+  return `<div class="card" style="border-color:#e9d9b8"><div class="card-head">${pill(pr ? '待批准 · 开 PR' : `待批准 · ${PURPOSE[d.purpose] ?? d.purpose}`, 'amber')}
+      ${d.ticketId ? `<a class="title small" href="#/ticket/${d.ticketId}">${esc(d.ticketTitle ?? d.ticketId)}</a>` : ''}<span class="grow"></span><span class="muted small">发到 ${src(`${d.channel.source}:${d.channel.thread}`)} · ${ago(d.createdAt)}</span></div>
+    ${d.replyToText ? `<div class="quote">回复 ${esc(d.replyToText)}</div>` : ''}
+    ${pr ? `<div class="small sub" style="margin-bottom:8px">把分支 <code>${esc(d.pullRequest.branch)}</code> 推送并向 <code>${esc(d.pullRequest.base)}</code> 开 PR。标题：</div>` : ''}
+    <textarea id="${esc(id)}" oninput="EDITS[this.id]=this.value" style="${pr ? 'min-height:42px' : ''}">${esc(EDITS[id] ?? d.text)}</textarea>
+    ${pr ? `<details style="margin-top:8px"><summary class="small muted" style="cursor:pointer">PR 描述</summary><div class="comment" style="margin-top:6px"><div class="comment-body">${md(d.pullRequest.body)}</div></div></details>` : ''}
+    <div class="actions"><button class="danger" onclick="act('/outbox/${encodeURIComponent(d.id)}/reject', {}, '已拒绝')">拒绝</button><button class="primary" onclick="approve('${esc(d.id)}')">${pr ? '批准并开 PR' : '批准发送'}</button></div></div>`
+}
+function decisionPill(d) { if (d.wouldAccept) return pill('本会接单', 'indigo'); const [text, tone] = KIND[d.kind] ?? [d.kind, '']; return pill(text, tone) }
+function decisionCard(d) {
+  const rules = d.audit?.rule_assessments ? `<div class="stack small" style="margin-top:10px">${d.audit.rule_assessments.map(r => `<div class="row" style="flex-wrap:nowrap;align-items:flex-start">${r.matched ? pill('命中', 'green', true) : pill('未命中', '', true)}<span><code>${esc(r.rule_id)}</code> <span class="sub">${esc(r.reason)}</span></span></div>`).join('')}</div>` : ''
+  return `<div class="card"><div class="card-head">${decisionPill(d)} ${pill(d.strength === 'explicit' ? '明确' : '推断', '', true)} <a class="small" href="#/thread/${encodeURIComponent(d.threadKey)}">${src(d.threadKey)}</a>${d.ticketId ? ` <a class="small" href="#/ticket/${d.ticketId}">→ 工单</a>` : ''}<span class="grow"></span><span class="muted tiny">${ago(d.at)}</span></div>
+    <div class="sub">${esc(d.reasons.map(r => r.text).join('；'))}</div>
+    ${d.trigger ? `<div class="quote ellipsis" style="margin:8px 0 0">${esc(d.trigger.from)}：${esc(d.trigger.text)}</div>` : ''}${rules}
+    ${d.allowable ? `<div class="actions"><button class="small" onclick="allow('${esc(d.trigger.source)}', '${esc(d.trigger.from)}')">把 ${esc(d.trigger.from)} 加入允许列表</button></div>` : ''}</div>`
+}
+function disposition(d) {
+  if (!d) return ''
+  if (d.filtered) return pill('来源过滤', '', true)
+  const parts = []
+  if (d.fanout?.length) parts.push(pill('直达工单', 'sky', true))
+  if (d.handbacks?.length) parts.push(pill('被交还', 'amber', true))
+  if (d.acked?.length) parts.push(pill('worker 已接手', 'green', true))
+  return parts.join(' ')
+}
+async function approve(id) { const text = document.getElementById(`draft-${id}`)?.value; delete EDITS[`draft-${id}`]; await act(`/outbox/${encodeURIComponent(id)}/approve`, { text }, '已批准') }
+async function allow(source, id) { if (confirm(`允许 ${id}（${source}）向 agent 派活？`)) await act('/policy/allow', { source, id }, '已加入允许列表') }
+async function takeover(id) { await act(`/tickets/${id}/input`, { text: $('#takeover').value }, '已交给 worker') }
+async function showArtifact(path, kind) {
+  const text = await api(`/artifact?path=${encodeURIComponent(path)}`)
+  $('#artifact').innerHTML = kind === 'diff' ? diff(text) : `<pre>${esc(text)}</pre>`
+}
+function preset(i) {
+  const p = PRESETS[i][2]
+  for (const k of ['source', 'event', 'number', 'user', 'title', 'chat', 'root', 'text']) { const el = $(`#s-${k}`); if (el) el.value = p[k] ?? '' }
+  toast(`已填入「${PRESETS[i][0]}」，点“发送事件”`)
+}
+async function simulate() {
+  const v = k => $(`#s-${k}`).value.trim()
+  const body = { event: v('event'), user: v('user'), text: v('text'), ...v('number') ? { number: Number(v('number')) } : {}, ...v('title') ? { title: v('title') } : {}, ...v('chat') ? { chat: v('chat') } : {}, ...v('root') ? { root: v('root') } : {} }
+  try { await api(`/simulate/${v('source')}`, { method: 'POST', body }); $('#s-out').textContent = `已发送 · ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`; toast('已发送，去概览看看') } catch (error) { toast(`失败：${error.message}`) }
+}
+async function saveSettings() {
+  try { await api('/settings', { method: 'PUT', body: JSON.parse($('#settings').value) }); toast('已保存'); render.html = undefined; render() } catch (error) { toast(`失败：${error.message}`) }
+}
+
+// ── Shell ──────────────────────────────────────────────────────────────────
+async function render() {
+  const [path, search] = (location.hash.slice(2) || 'overview').split('?')
+  const [view, ...rest] = path.split('/')
+  const name = views[view] ? view : 'overview'
+  const section = name === 'ticket' ? 'tickets' : name === 'thread' ? 'threads' : name
+  let overview
+  try { overview = await api('/overview') } catch { /* the page shows the error */ }
+  const waiting = overview ? overview.needs.tickets.length + overview.needs.unavailable.length
+    + (overview.system.outbound === 'review' ? overview.needs.drafts.length : 0) : 0
+  const nav = NAV.map(([k, v]) => `<a href="#/${k}" class="${k === section ? 'on' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>${v}${k === 'overview' && waiting ? `<span class="count">${waiting}</span>` : ''}</a>`).join('')
+  if (nav !== render.nav) { $('#nav').innerHTML = nav; render.nav = nav }
+  if (overview) {
+    const s = overview.system
+    const sys = `${s.paused ? `<div class="kv"><span>处理</span><b style="color:var(--red)">已暂停</b></div>` : ''}<div class="kv"><span>主动工作</span><b>${esc(s.mode)}</b></div><div class="kv"><span>对外消息</span><b>${s.outbound === 'review' ? '需批准' : '自动'}</b></div><div class="kv"><span>Router</span><b>${esc(s.router ?? 'mock')}</b></div><div class="kv"><span>Worker</span><b>${esc(s.agent)}</b></div><div class="kv"><span>策略</span><b><code style="font-size:11px">${esc(s.policyVersion)}</code></b></div>`
+    if (sys !== render.sys) { $('#sys').innerHTML = sys; render.sys = sys }
+  }
+  try {
+    const html = await views[name](new URLSearchParams(search ?? ''), decodeURIComponent(rest.join('/')))
+    const active = document.activeElement
+    if (active && ['TEXTAREA', 'INPUT', 'SELECT'].includes(active.tagName) && render.last === location.hash) return
+    if (document.querySelector('#artifact')?.innerHTML && render.last === location.hash) return
+    render.last = location.hash
+    if (html !== render.html) { $('#main').innerHTML = html; render.html = html }
+  } catch (error) { $('#main').innerHTML = head('出错了') + `<div class="card">${esc(error.message)}</div>` }
+}
+window.addEventListener('hashchange', () => { render.last = undefined; render.html = undefined; render(); window.scrollTo(0, 0) })
+render()
+setInterval(() => { if (!['simulate', 'settings'].includes((location.hash.slice(2) || 'overview').split(/[/?]/)[0])) render() }, 2500)
+</script>
+</body>
+</html>

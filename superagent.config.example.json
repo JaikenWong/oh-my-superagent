@@ -1,0 +1,28 @@
+{
+  "stateDir": ".state/prod",
+  "http": { "host": "127.0.0.1", "port": 7878 },
+  "repository": { "path": "/path/to/your/clone", "baseBranch": "main", "source": "github" },
+  "sources": {
+    "github": {
+      "kind": "github", "repo": "your-org/your-repo", "account": "your-agent-account",
+      "tokenEnv": "GITHUB_TOKEN", "secretEnv": "GITHUB_WEBHOOK_SECRET", "receiveAll": false
+    },
+    "feishu": {
+      "kind": "feishu", "botOpenId": "ou_xxx", "chats": ["oc_xxx"],
+      "appIdEnv": "FEISHU_APP_ID", "appSecretEnv": "FEISHU_APP_SECRET", "verificationTokenEnv": "FEISHU_VERIFICATION_TOKEN"
+    }
+  },
+  "settings": {
+    "outbound": "auto",
+    "policy": {
+      "mode": "observe",
+      "sources": {
+        "github": { "allowed": [{ "id": "your-github-login" }] },
+        "feishu": { "allowed": [{ "id": "ou_your_open_id" }] }
+      }
+    },
+    "eval": { "timeoutSeconds": 120, "assessor": "heuristic" },
+    "router": { "agent": "claude" },
+    "executor": { "maxWorkers": 2, "agent": "claude", "turnTimeoutMinutes": 30, "prepare": "npm ci --ignore-scripts" }
+  }
+}

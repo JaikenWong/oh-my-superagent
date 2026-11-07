@@ -1,0 +1,22 @@
+{
+  "name": "oh-my-superagent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Research demo of DeepSeek Super-agent design: Main Session Router + isolated Workers + Watchdog; GitHub/GitLab/Feishu; observe-first.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "demo": "node scripts/demo-setup.ts && node src/main.ts --config examples/demo.config.json",
+    "demo:real": "node scripts/demo-setup.ts && node src/main.ts --config examples/real.config.json",
+    "simulate": "node scripts/simulate.ts",
+    "test": "node --test --test-concurrency=1 \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
