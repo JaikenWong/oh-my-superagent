@@ -192,4 +192,211 @@ Worker：`executor.agent = mock | claude | codex`。`npm run demo:real` = 两边
 | 巡检 | `src/watchdog/` |
 | 面板 | `src/panel/` + `src/app/views.ts` |
 
-离线：`npm run demo`。真 Claude：`npm run demo:real`。
+离线：`npm run demo`。真 Claude：`npm run demo:real`。可选 Worker：`executor.agent = dsh`（本地 DeepSeek Harness `headless`）。
+
+评审落地任务见 [design-review.md](design-review.md)。
+
+---
+
+## 9. 状态机与并发控制
+
+领域对象有**代码字段**与**逻辑态**两套说法；逻辑态用于契约，字段见 `model.ts` / `stage.ts`。
+
+### 9.1 Ticket 逻辑态 ↔ 代码
+
+| 逻辑态 | 代码怎么认 | 谁推进 |
+| --- | --- | --- |
+| Created→Accepted | `accept` 建 Ticket + Mandate + 首个 Assignment(`pending`) | Router → Engine |
+| Running / Working | `ticketStage` = `working`（含 queued） | Executor |
+| Waiting / Blocked / 等人 | `person/*`（attention、blocked、failed、delivery、review） | Report / 投递失败 |
+| Idle | Assignment `running` 且无 undelivered、无 taking | 等跟进 |
+| Completed / Failed / Stopped / Dropped | `ticket.ended.outcome` | Engine `#end` |
+
+`ticketStage` 是**互斥展示态**，不是第二套持久化状态机。
+
+### 9.2 Assignment 生命周期
+
+```
+pending → running → ended
+```
+
+| 事件 | 效果 |
+| --- | --- |
+| `assignmentStarted` | pending→running；`#take` 消费 undelivered |
+| `turnEnded`（当前 generation） | 写入 report；可能 wake 下一轮 |
+| Retry / host restart / reopen | **新建** Assignment；旧的 `ended`；`generation` 递增 |
+| Ticket `#end` | 所有未 ended 的 Assignment 一并 ended |
+
+### 9.3 执行互斥与过期 Report
+
+**INV-2** 同一 Ticket 同时最多一个有效 Running Assignment。  
+**INV-6** 过期 Assignment 的迟到 Report 不得改 Ticket 业务态。
+
+规则：
+
+1. Retry / recover 必须 `push` 新 Assignment，禁止改写旧记录上的执行结果冒充新执行。
+2. `turnEnded` 仅当 `assignmentId` 仍是当前 Running Assignment 且 `generation` 匹配时应用 Report；否则记 `assignment.report_stale` 并忽略。
+3. Stop / `#end` 使当前执行失效：Assignment ended + `executor.stop`（杀进程）；不只发「请停」文案。
+
+`Assignment.generation`：Ticket 内单调递增序号（与 assignments 下标一致）。
+
+### 9.4 输入队列（订阅直通）
+
+```
+Thread Subscription → Ticket inputs/undelivered → Assignment.taking → Worker Turn
+```
+
+| 机制 | 契约 |
+| --- | --- |
+| 顺序 | 按入队顺序；Source 事件时间作辅助 |
+| 执行中到达 | 留在 `undelivered` |
+| 下一轮 | `#take` 批量交给 Assignment |
+| 去重 | Trigger `receive` 按 id；Input id 去重 |
+| 人类优先 | 槽位：人的跟进可多占 1 个 worker |
+| Stop | 尽快 `#end` + kill；未交付 human trigger 退回 Eval（若无其他 owner） |
+| Fan-out | 一 Trigger 可进多个 Ticket；各 Ticket **独立**消费 |
+
+### 9.5 Stop ↔ Retry
+
+| 情况 | 行为 |
+| --- | --- |
+| 人/Router Stop | `ended.outcome=stopped`；**INV-7** 自动 Retry 禁止 |
+| `canRetry` | 未 ended，且（等人处置的 stalled **或** delivery 失败），且未超 `maxRetries` |
+| 人面板 `sendText` | 可 reopen（非「自动」Retry） |
+| Watchdog | 见 §11；不得覆盖 Stop |
+
+### Invariants（§9）
+
+- INV-1、INV-2、INV-6、INV-7
+- Retry 只建新 Assignment
+- 输入只经 Engine 入队；Worker 不自改 undelivered
+
+---
+
+## 10. 权限与安全模型
+
+### 10.1 Mandate → 宿主强制
+
+```
+Mandate.capability
+        │
+        ▼
+Capability Resolver（宿主）
+        │
+        ▼
+Execution Policy
+   ├── Filesystem / worktree
+   ├── Command shim + 工具 allowlist
+   ├── Git（commit / push）
+   ├── Network / 外部写（禁止经 Worker）
+   └── Outbox（唯一对外写）
+```
+
+**权限由宿主执行，不靠模型自觉。** Prompt / `SUPERAGENT_CAPABILITY` 只是说明。
+
+| 能力 | read | write |
+| --- | --- | --- |
+| 读文件 / 搜代码 | 允许 | 允许 |
+| 改工作区文件 | **禁止**（shim + 后端策略） | 允许（worktree 内） |
+| 跑测试 | 允许 | 允许 |
+| `git commit` | **禁止** | 允许 |
+| `git push` | **禁止** | **禁止**（宿主） |
+| 开 PR / 对人说话 | **禁止** | **宿主 Outbox** |
+| 改其他仓库 | **禁止** | **禁止** |
+
+第一版：命令白名单/shim、CLI `--permission-mode` / tool allowlist、凭据不进 Worker。完整 OS 沙箱非必须。
+
+Worker 后端：`mock` \| `claude` \| `codex` \| **`dsh`**（DeepSeek Harness `headless`；read→`read-only`，write→`workspace-write`）。
+
+### 10.2 信任边界
+
+1. Source：身份与签名/webhook 校验。
+2. Gate：准入，**不**信任正文。
+3. `Trigger.text` / `meta`：**不可信**。
+4. Worker 不得把 Trigger 当系统指令。
+5. **INV-4** Prompt Injection 不能扩大 Mandate；更大权限 = hand-back → 新 Ticket。
+6. **INV-3 / INV-5** 外部写只经 Outbox + 宿主校验。
+
+### Invariants（§10）
+
+- INV-3、INV-4、INV-5
+- Mandate 不可变
+
+---
+
+## 11. 可靠性与恢复
+
+### 11.1 Watchdog = Detector + Recovery Policy
+
+| 层 | 职责 | 调 LLM？ |
+| --- | --- | --- |
+| **Detector** | 超时、无进展、Assignment 异常、进程失联、`canRetry` 候选 | 否 |
+| **Recovery Policy** | 是否 Retry / 仅 note / 通知 Router / 标失败 | 否（第一版）；复杂案可问 Router |
+
+| 情况 | 处理 |
+| --- | --- |
+| Worker 异常退出 / failed report | 可 Retry（有预算） |
+| 超时 | 先 stop 旧进程，再决定 Retry |
+| 外部 API / PR 结果未知 | **不**盲目重放；note + 通知 Router |
+| 连续失败超 `maxRetries` | 停自动 Retry，等人 |
+| 用户 Stop | **禁止**自动重启（INV-7） |
+
+参数：`executor.maxRetries`（默认 3）、巡检间隔、退避由 effects 承担。
+
+### 11.2 Outbox
+
+状态：
+
+```
+draft → pending → sending → sent
+                      ├── failed（可有限重试）
+                      └── unknown（外部可能已成功，本地无确认）
+dropped（人拒 / 通道失效 / Ticket stop 撤草稿）
+```
+
+- 入队按 message `id` 去重；建议带 `idempotencyKey`（默认同 id）。
+- **顺序**：同一 Ticket + 同一 conversation 按 `seq` 保序（非全局总序）。
+- `unknown`：优先 Source 查询；能确认 → `sent`；否则人工或平台幂等重试。
+- At-least-once 投递 + 幂等键；**不**宣称 exactly-once。
+
+### 11.3 Crash recovery
+
+启动 `recover()`：
+
+1. `pending` Assignment → 再 `start`
+2. `running` 且 `taking` → 旧 Assignment ended（host restarted），新 Assignment + recovery 文案，归还 Inputs
+3. Outbox `sending` → 标 `unknown`，进入查询/人工路径（实现见 Outbox 恢复）
+
+### Invariants（§11）
+
+- INV-5、INV-7
+- 有外部副作用未知时禁止盲目 Retry
+
+---
+
+## 12. 事件与可观测性
+
+Event Log（`store.events`）应逐步对齐：
+
+```ts
+interface DomainEvent {
+  eventId: string
+  eventType: string
+  occurredAt: string
+  ticketId?: string
+  assignmentId?: string
+  triggerId?: string
+  threadId?: string
+  correlationId?: string
+  causationId?: string
+  payload: Record<string, unknown>
+}
+```
+
+关键类型：`trigger.*` · `eval.*` · `ticket.*` · `assignment.*`（含 `report_stale`）· `outbox.*` · `watchdog.*`。
+
+Router 上下文（P2 约束）：Inbox / Active Ticket Summary / Recent Decisions / 长期记忆索引；**历史 Report 不永久塞进 Main Session**；状态仍以 Engine+SQLite 为准（INV-1）。
+
+### Invariants（§12）
+
+- 领域变更可审计；过期 Report 有显式 stale 事件

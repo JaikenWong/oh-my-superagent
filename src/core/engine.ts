@@ -477,10 +477,22 @@ export class Engine {
       if (!ticket || !assignment) return
       const at = this.#now()
       const turn = assignment.turns + 1
+      const current = latestAssignment(ticket)
+      const stale = ticket.ended || assignment.state !== 'running' || current?.id !== assignmentId
+        || (current !== undefined && current.generation !== assignment.generation)
       for (const artifact of result.artifacts ?? []) {
         ticket.artifacts.push({ ...artifact, id: key('art', ticketId, assignmentId, turn, artifact.kind), assignmentId, turn, at })
       }
-      if (assignment.state !== 'running' || ticket.ended) { this.#save(ticket); return }
+      if (stale) {
+        if (result.report || result.error) {
+          this.#emit('assignment.report_stale', {
+            ticketId, assignmentId, generation: assignment.generation,
+            currentAssignmentId: current?.id, currentGeneration: current?.generation,
+          })
+        }
+        this.#save(ticket)
+        return
+      }
       assignment.turns = turn
       if (result.unread && assignment.taking) ticket.undelivered = [...assignment.taking, ...ticket.undelivered]
       delete assignment.taking
@@ -565,15 +577,19 @@ export class Engine {
     })
   }
 
-  /** Ends the stalled Assignment and starts a new one in the same directory, branch and session. */
-  retryTicket(ticketId: string): void {
+  /**
+   * Ends the stalled Assignment and starts a new one in the same directory, branch and session.
+   * Stopped Tickets refuse retry (INV-7). `maxRetries` defaults to 3 when the caller omits a budget.
+   */
+  retryTicket(ticketId: string, maxRetries = 3): void {
     this.#repo.atomic(() => {
       const ticket = this.#ticket(ticketId)
-      if (!canRetry(ticket)) throw new UserError('cannotRetry', { ticket: ticketId })
+      if (!canRetry(ticket, maxRetries)) throw new UserError('cannotRetry', { ticket: ticketId })
+      ticket.retries = (ticket.retries ?? 0) + 1
       this.#replaceAssignment(ticket, 'retried', 'A person retried this Ticket after the previous attempt stalled. Read the previous report in your notes, then continue.')
       delete ticket.delivery
       this.#save(ticket)
-      this.#emit('ticket.retried', { ticketId })
+      this.#emit('ticket.retried', { ticketId, retries: ticket.retries, generation: latestAssignment(ticket)?.generation })
       this.#d.executor.start(ticketId)
     })
   }
@@ -786,7 +802,7 @@ export class Engine {
 }
 
 function newAssignment(ticketId: string, index: number, at: string): Assignment {
-  return { id: key('a', ticketId, index), state: 'pending', createdAt: at, turns: 0 }
+  return { id: key('a', ticketId, index), generation: index, state: 'pending', createdAt: at, turns: 0 }
 }
 
 export function ticketCard(ticket: Ticket): TicketCard {

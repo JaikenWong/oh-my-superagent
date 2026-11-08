@@ -331,7 +331,35 @@ describe('reports and lifecycle', () => {
     const recovered = h.store.tickets.get(ticket.id)!
     assert.equal(recovered.assignments[0]!.endedReason, 'host restarted')
     assert.match(recovered.assignments[1]!.recovery!, /restarted/)
+    assert.equal(recovered.assignments[1]!.generation, 1)
     assert.equal(recovered.undelivered.length, 1)
     assert.deepEqual(h.state.started, [ticket.id])
+  })
+
+  test('stale Report from an ended Assignment does not change Ticket state', () => {
+    const ticket = accepted(h)
+    const first = h.store.tickets.get(ticket.id)!.assignments[0]!
+    h.engine.assignmentStarted(ticket.id, first.id, { directory: '/tmp/x', branch: 'b', base: 'main', session: 's', backend: 'mock' })
+    h.engine.turnEnded(ticket.id, first.id, { report: { state: 'failed', summary: 'boom' } })
+    h.engine.retryTicket(ticket.id)
+    const after = h.store.tickets.get(ticket.id)!
+    assert.equal(after.assignments.length, 2)
+    assert.equal(after.assignments[0]!.state, 'ended')
+    assert.equal(after.assignments[1]!.generation, 1)
+    h.engine.turnEnded(ticket.id, first.id, { report: { state: 'ready', summary: 'late success from old worker', reply: 'should ignore' } })
+    const late = h.store.tickets.get(ticket.id)!
+    assert.ok(!late.ended, 'stale ready must not complete the Ticket')
+    assert.equal(late.assignments[0]!.report!.state, 'failed')
+    assert.ok(!late.assignments[1]!.report)
+    assert.ok(h.store.eventsFor('ticket', ticket.id).some(event => event.type === 'assignment.report_stale'))
+  })
+
+  test('Stop forbids automatic Retry (INV-7)', () => {
+    const ticket = accepted(h)
+    const assignment = h.store.tickets.get(ticket.id)!.assignments[0]!
+    h.engine.assignmentStarted(ticket.id, assignment.id, { directory: '/tmp/x', branch: 'b', base: 'main', session: 's', backend: 'mock' })
+    h.engine.turnEnded(ticket.id, assignment.id, { report: { state: 'failed', summary: 'boom' } })
+    h.engine.stopTicket(ticket.id)
+    assert.throws(() => h.engine.retryTicket(ticket.id), /cannotRetry/)
   })
 })

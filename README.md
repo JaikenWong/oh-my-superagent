@@ -7,7 +7,8 @@
 | 文档 | 内容 |
 | --- | --- |
 | 本 README | 怎么跑、面板剧本、配置、目录 |
-| [docs/design.md](docs/design.md) | 理念、领域模型、数据流、与原文差异 |
+| [docs/design.md](docs/design.md) | 理念、领域模型、状态机/权限/可靠性契约 |
+| [docs/design-review.md](docs/design-review.md) | 评审落地任务清单（P0–P2） |
 | [docs/walkthrough.md](docs/walkthrough.md) | 一条请求从 webhook 到回帖的逐步对照 |
 
 核心原则：**占用尽量少的人类注意力，交付尽量多的价值。**
@@ -83,6 +84,24 @@ npm run demo:real
 "router": { "agent": "claude" },
 "executor": { "agent": "claude" }
 ```
+
+### C. Worker = 本地 DeepSeek Harness（`dsh headless`）
+
+前提：本机有 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 源码，且已 `pnpm install`（可用 `tsx`）。
+
+```bash
+# 默认 examples/dsh.config.json 里 dshRoot 指向 ../deepseek-harness
+# 或: export DSH_ROOT=/path/to/deepseek-harness
+# 或: export DSH_BIN=/path/to/dsh
+npm run demo:dsh
+```
+
+| 层 | 行为 |
+| --- | --- |
+| Router | 仍可用 mock（省调用） |
+| Worker | `dsh --profile headless`；read → `--permission-mode read-only`，write → `workspace-write` |
+| 宿主 | 继续强制 Outbox / git shim；Harness 沙箱是额外一层 |
+
 
 | 层 | 实际行为 |
 | --- | --- |

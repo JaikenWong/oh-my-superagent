@@ -1,10 +1,12 @@
 /**
  * Agent backends: how one worker turn runs as an external CLI agent. The host only orchestrates; the coding agent is
- * whichever CLI the deployment chose. Tool allowlists follow the Mandate's capability.
+ * whichever CLI the deployment chose. Tool allowlists / permission modes follow the Mandate's capability (§10).
  */
 import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Capability } from '../core/model.ts'
+import { permissionModeFor } from './capability.ts'
 
 export interface TurnSpec {
   directory: string
@@ -15,10 +17,12 @@ export interface TurnSpec {
   capability: Capability
   lastMessagePath: string
   extraArgs: string[]
+  /** Absolute path to a deepseek-harness checkout when using the `dsh` backend. */
+  dshRoot?: string
 }
 export interface AgentCommand { command: string; args: string[]; input: string }
 export interface AgentBackend {
-  id: 'mock' | 'claude' | 'codex'
+  id: 'mock' | 'claude' | 'codex' | 'dsh'
   /** Keeps its own history across turns; otherwise each prompt repeats the Ticket's history. */
   resumable: boolean
   command(spec: TurnSpec): AgentCommand
@@ -76,4 +80,60 @@ export const mock: AgentBackend = {
   finalText: stdout => stdout,
 }
 
-export const BACKENDS: Record<AgentBackend['id'], AgentBackend> = { claude, codex, mock }
+/**
+ * DeepSeek Harness headless Worker. Resolves CLI via `DSH_BIN`, or `dshRoot`/`DSH_ROOT` + `apps/cli/src/bin.ts`, or `dsh` on PATH.
+ * Capability → `--permission-mode read-only|workspace-write` (host-enforced sandbox policy in harness).
+ * First version is non-resumable: each turn gets the full Ticket prompt (session resume can land later).
+ */
+export const dsh: AgentBackend = {
+  id: 'dsh',
+  resumable: false,
+  command: spec => {
+    const mode = permissionModeFor(spec.capability, 'dsh')
+    const { command, prefix } = resolveDsh(spec.dshRoot)
+    return {
+      command,
+      args: [
+        ...prefix,
+        '--profile', 'headless',
+        '--permission-mode', mode,
+        '--approval-policy', 'never',
+        ...spec.extraArgs,
+        '-',
+      ],
+      input: spec.prompt,
+    }
+  },
+  finalText: stdout => {
+    const trimmed = stdout.trim()
+    if (!trimmed) return ''
+    // Plain final message, or last NDJSON event that carries a message/result field.
+    if (!trimmed.includes('\n') || !trimmed.startsWith('{')) return trimmed
+    let last = trimmed
+    for (const line of trimmed.split('\n')) {
+      const row = line.trim()
+      if (!row.startsWith('{')) continue
+      try {
+        const event = JSON.parse(row) as { type?: string; message?: string; result?: string; text?: string }
+        const text = event.message ?? event.result ?? event.text
+        if (typeof text === 'string' && text.trim()) last = text
+      } catch { /* keep scanning */ }
+    }
+    return last
+  },
+}
+
+function resolveDsh(dshRoot?: string): { command: string; prefix: string[] } {
+  if (process.env.DSH_BIN?.trim()) return { command: process.env.DSH_BIN.trim(), prefix: [] }
+  const root = dshRoot?.trim() || process.env.DSH_ROOT?.trim()
+  if (root) {
+    const bin = join(root, 'apps/cli/src/bin.ts')
+    // Prefer harness-local tsx so Worker cwd (worktree) need not resolve the package.
+    const tsx = join(root, 'node_modules/tsx/dist/esm/index.mjs')
+    if (existsSync(bin) && existsSync(tsx)) return { command: process.execPath, prefix: ['--import', tsx, bin] }
+    if (existsSync(bin)) return { command: process.execPath, prefix: ['--import', 'tsx/esm', bin] }
+  }
+  return { command: 'dsh', prefix: [] }
+}
+
+export const BACKENDS: Record<AgentBackend['id'], AgentBackend> = { claude, codex, mock, dsh }

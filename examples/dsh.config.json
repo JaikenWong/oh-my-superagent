@@ -1,0 +1,28 @@
+{
+  "stateDir": "../.state/dsh",
+  "http": { "host": "127.0.0.1", "port": 7879 },
+  "repository": { "path": "./demo-repo", "baseBranch": "main", "source": "github" },
+  "sources": {
+    "github": { "kind": "github", "repo": "acme/demo-app", "account": "superagent-bot", "dryRun": true, "receiveAll": true },
+    "feishu": { "kind": "feishu", "botOpenId": "ou_superagent_bot", "dryRun": true }
+  },
+  "settings": {
+    "outbound": "auto",
+    "policy": {
+      "mode": "observe",
+      "sources": {
+        "github": { "allowed": [{ "id": "alice", "name": "Alice" }] },
+        "feishu": { "allowed": [{ "id": "ou_alice", "name": "Alice" }] }
+      }
+    },
+    "eval": { "timeoutSeconds": 180, "assessor": "heuristic" },
+    "router": { "agent": "mock" },
+    "executor": {
+      "maxWorkers": 1,
+      "agent": "dsh",
+      "turnTimeoutMinutes": 30,
+      "maxRetries": 3,
+      "dshRoot": "../../deepseek-harness"
+    }
+  }
+}

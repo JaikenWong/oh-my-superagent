@@ -25,5 +25,9 @@ export function ticketStage(ticket: Ticket): TicketStage {
 export const stageLabel = (stage: TicketStage): string => stage.stage === 'person' ? `person/${stage.action}`
   : stage.stage === 'working' && stage.action ? 'working/queued' : stage.stage
 
-/** Retry is the remedy for a stalled Ticket: blocked or failed without a newer person's message, or a failed delivery. */
-export const canRetry = (ticket: Ticket): boolean => !ticket.ended && (waitsForPerson(ticket) || !!ticket.delivery)
+/**
+ * Retry is the remedy for a stalled Ticket: blocked or failed without a newer person's message, or a failed delivery.
+ * Stopped / ended Tickets never retry (INV-7). `maxRetries` caps automatic recovery budget.
+ */
+export const canRetry = (ticket: Ticket, maxRetries = 3): boolean =>
+  !ticket.ended && (ticket.retries ?? 0) < maxRetries && (waitsForPerson(ticket) || !!ticket.delivery)

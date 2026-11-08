@@ -98,6 +98,8 @@ export interface OutgoingMessage {
   text: string
   /** The Trigger it answers, whose message it replies under. */
   replyTo?: string
+  /** Platform idempotency; defaults to `id` when omitted. */
+  idempotencyKey?: string
   /** For `pull_request`: the branch and texts the host opens it with once a person approves. */
   pullRequest?: { branch: string; base: string; title: string; body: string; directory: string }
 }

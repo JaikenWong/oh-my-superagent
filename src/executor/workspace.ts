@@ -46,17 +46,19 @@ export async function commitAll(directory: string, base: string, message: string
 }
 
 /**
- * Command shims for workers: blocked commands fail by name, and `git push` is refused because the host pushes after a
- * person approves. These are defaults, not a security boundary: a program run by absolute path bypasses them.
+ * Command shims for workers: blocked commands fail by name; git subcommands follow Mandate capability
+ * (`src/executor/capability.ts`). Absolute-path bypass still possible — host CLI permission modes are the stronger fence.
  */
-export async function installShims(directory: string, blocked: string[]): Promise<string> {
+export async function installShims(directory: string, blocked: string[], gitBlocked: string[] = ['push']): Promise<string> {
   mkdirSync(directory, { recursive: true })
   const realGit = (await run('sh', ['-c', 'command -v git'])).stdout.trim()
   for (const name of blocked) {
     if (!/^[A-Za-z0-9._-]+$/.test(name) || name === 'git') continue
     write(join(directory, name), `#!/bin/sh\necho "superagent: '${name}' is not available to workers; report what you need instead." >&2\nexit 1\n`)
   }
-  write(join(directory, 'git'), `#!/bin/sh\nfor arg in "$@"; do\n  case "$arg" in\n    push) echo "superagent: workers do not push; propose a pull request in your report and the host opens it once a person approves." >&2; exit 1;;\n  esac\ndone\nexec ${realGit} "$@"\n`)
+  const cases = gitBlocked.map(sub =>
+    `    ${sub}) echo "superagent: git ${sub} is blocked by host Execution Policy (Mandate); report what you need instead." >&2; exit 1;;`).join('\n')
+  write(join(directory, 'git'), `#!/bin/sh\nfor arg in "$@"; do\n  case "$arg" in\n${cases}\n  esac\ndone\nexec ${realGit} "$@"\n`)
   return directory
 }
 function write(path: string, content: string) {

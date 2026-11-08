@@ -22,14 +22,15 @@ export const STAGE_TEXT: Record<string, string> = {
 }
 const OUTCOME_TEXT: Record<string, string> = { completed: '已完成', merged: 'PR 已合并', closed: 'PR 已关闭', dropped: '无需处理', stopped: '被人停止' }
 
-export function ticketRow(ticket: Ticket) {
+export function ticketRow(ticket: Ticket, maxRetries = 3) {
   const stage = stageLabel(ticketStage(ticket))
   const report = latestReport(ticket)
   return {
     id: ticket.id, name: ticket.name, title: ticket.title, stage, stageText: ticket.ended ? OUTCOME_TEXT[ticket.ended.outcome] : STAGE_TEXT[stage],
     capability: ticket.mandate.capability, strength: ticket.mandate.strength, requester: `${ticket.mandate.actor.source}:${ticket.mandate.actor.id}`,
     report: report ? { state: report.state, summary: report.summary.slice(0, 240), at: report.at } : undefined,
-    attention: ticket.attention?.question, delivery: ticket.delivery?.error, canRetry: canRetry(ticket), ended: ticket.ended,
+    attention: ticket.attention?.question, delivery: ticket.delivery?.error,
+    canRetry: canRetry(ticket, maxRetries), ended: ticket.ended, retries: ticket.retries ?? 0,
     follows: ticket.follows, proposal: ticket.proposal, createdAt: ticket.createdAt, updatedAt: ticket.updatedAt,
   }
 }
@@ -106,7 +107,7 @@ export function overview(runtime: Runtime) {
 
 export function tickets(runtime: Runtime, filter: string) {
   const all = runtime.store.allTickets(300)
-  const rows = all.map(ticketRow)
+  const rows = all.map(ticket => ticketRow(ticket, runtime.settings.executor.maxRetries))
   if (filter === 'open') return rows.filter(row => !row.ended)
   if (filter === 'ended') return rows.filter(row => row.ended)
   if (filter && filter !== 'all') return rows.filter(row => row.stage.startsWith(filter))
@@ -120,7 +121,7 @@ export function ticketDetail(runtime: Runtime, id: string) {
   const trigger = (triggerId: string) => store.triggers.get(triggerId)
   const decision = store.decisions.get(ticket.decisionId)
   return {
-    ...ticketRow(ticket),
+    ...ticketRow(ticket, runtime.settings.executor.maxRetries),
     mandate: ticket.mandate,
     decision: decision ? decisionRow(decision, runtime) : undefined,
     origin: ticket.origin.triggerIds.flatMap(item => trigger(item) ?? []),

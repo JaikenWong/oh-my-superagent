@@ -21,7 +21,19 @@ export interface Settings {
   eval: { timeoutSeconds: number; assessor: 'heuristic' | 'claude' }
   /** Main Session backend: `claude` = real CLI Router; `mock` = deterministic offline. */
   router: { agent: 'mock' | 'claude' }
-  executor: { maxWorkers: number; agent: 'mock' | 'claude' | 'codex'; turnTimeoutMinutes: number; blockedCommands: string[]; prepare: string; agentArgs: string[] }
+  executor: {
+    maxWorkers: number
+    agent: 'mock' | 'claude' | 'codex' | 'dsh'
+    turnTimeoutMinutes: number
+    /** Automatic Retry budget (Watchdog / host); Stop still forbids restart. */
+    maxRetries: number
+    blockedCommands: string[]
+    prepare: string
+    agentArgs: string[]
+    /** Absolute path to a deepseek-harness checkout when `agent` is `dsh`; else `DSH_ROOT` / `DSH_BIN`. */
+    dshRoot?: string
+  }
+  watchdog: { intervalMs: number }
 }
 
 export const ADMISSION_DEFAULTS: Required<AdmissionRow> = { listedUnaddressed: 'inferred', unlistedAddressed: 'ignore', unlistedUnaddressed: 'ignore' }
@@ -42,13 +54,18 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   eval: { timeoutSeconds: 120, assessor: 'heuristic' },
   router: { agent: 'mock' },
-  executor: { maxWorkers: 2, agent: 'mock', turnTimeoutMinutes: 30, blockedCommands: ['gh', 'glab', 'lark-cli'], prepare: '', agentArgs: [] },
+  executor: {
+    maxWorkers: 2, agent: 'mock', turnTimeoutMinutes: 30, maxRetries: 3,
+    blockedCommands: ['gh', 'glab', 'lark-cli'], prepare: '', agentArgs: [],
+  },
+  watchdog: { intervalMs: 60_000 },
 }
 
 /** Settings as a config file or the panel gives them: every block may be partial. */
 export type SettingsInput = Partial<Pick<Settings, 'paused' | 'outbound'>> & {
   policy?: Partial<Settings['policy']>; eval?: Partial<Settings['eval']>
   router?: Partial<Settings['router']>; executor?: Partial<Settings['executor']>
+  watchdog?: Partial<Settings['watchdog']>
 }
 
 /** Merges stored or configured settings over the defaults, refusing values the host cannot enforce. */
@@ -60,6 +77,7 @@ export function normalizeSettings(value: unknown): Settings {
     eval: { ...DEFAULT_SETTINGS.eval, ...input.eval },
     router: { ...DEFAULT_SETTINGS.router, ...input.router },
     executor: { ...DEFAULT_SETTINGS.executor, ...input.executor },
+    watchdog: { ...DEFAULT_SETTINGS.watchdog, ...input.watchdog },
   }
   const fail = (message: string): never => { throw new Error(`Invalid settings: ${message}`) }
   if (!['off', 'observe', 'auto'].includes(settings.policy.mode)) fail('policy.mode is off, observe or auto')
@@ -68,8 +86,10 @@ export function normalizeSettings(value: unknown): Settings {
   if (new Set(ids).size !== ids.length) fail('duplicate rule ids')
   for (const rule of settings.policy.rules) if (!/^[a-zA-Z0-9_-]{1,80}$/.test(rule.id) || !rule.instruction?.trim()) fail(`rule ${rule.id}`)
   if (!Number.isInteger(settings.executor.maxWorkers) || settings.executor.maxWorkers < 1 || settings.executor.maxWorkers > 16) fail('executor.maxWorkers is 1..16')
+  if (!Number.isInteger(settings.executor.maxRetries) || settings.executor.maxRetries < 0 || settings.executor.maxRetries > 32) fail('executor.maxRetries is 0..32')
   if (!['mock', 'claude'].includes(settings.router.agent)) fail('router.agent is mock or claude')
-  if (!['mock', 'claude', 'codex'].includes(settings.executor.agent)) fail('executor.agent is mock, claude or codex')
+  if (!['mock', 'claude', 'codex', 'dsh'].includes(settings.executor.agent)) fail('executor.agent is mock, claude, codex or dsh')
+  if (!Number.isInteger(settings.watchdog.intervalMs) || settings.watchdog.intervalMs < 1000) fail('watchdog.intervalMs >= 1000')
   for (const [source, part] of Object.entries(settings.policy.sources)) {
     if (!Array.isArray(part.allowed)) fail(`policy.sources.${source}.allowed is a list`)
   }

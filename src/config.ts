@@ -21,11 +21,16 @@ export function loadDeployment(path: string): Deployment {
   const base = dirname(file)
   const at = (value: string) => isAbsolute(value) ? value : resolve(base, value)
   if (!raw.repository?.path) throw new Error('config: repository.path is required')
+  const settings = raw.settings ? { ...raw.settings } : undefined
+  if (settings?.executor && typeof (settings.executor as { dshRoot?: string }).dshRoot === 'string') {
+    const root = (settings.executor as { dshRoot: string }).dshRoot
+    settings.executor = { ...settings.executor, dshRoot: at(root) }
+  }
   return {
     stateDir: at(raw.stateDir ?? '.state'),
     http: { host: raw.http?.host ?? '127.0.0.1', port: raw.http?.port ?? 7878, ...raw.http?.webhookPort ? { webhookPort: raw.http.webhookPort } : {} },
     repository: { path: at(raw.repository.path), baseBranch: raw.repository.baseBranch ?? 'main', ...raw.repository.source ? { source: raw.repository.source } : {} },
     sources: raw.sources ?? {},
-    ...raw.settings ? { settings: raw.settings } : {},
+    ...settings ? { settings } : {},
   }
 }

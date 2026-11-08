@@ -52,6 +52,44 @@ describe('Watchdog', () => {
     const actions = await wd.tick()
     assert.ok(actions.some(item => item.action === 'retry'))
     assert.equal(store.tickets.get(ticket.id)!.assignments.length, 2)
+    assert.equal(store.tickets.get(ticket.id)!.retries, 1)
     await effects.settle()
+  })
+
+  test('does not retry a stopped Ticket', async () => {
+    const store = new Store(':memory:')
+    const settings = normalizeSettings({ policy: { mode: 'observe', sources: { github: { allowed: [{ id: 'alice' }] } } }, executor: { maxRetries: 3 } })
+    const effects = new Effects(store, () => false)
+    let engine!: Engine
+    const session = new MainSession({
+      engine: () => engine, effects, store, settings: () => settings, stateDir: dir,
+    })
+    session.install()
+    const scope = { scope: () => ({ listened: true, observed: true }) }
+    engine = new Engine({
+      repo: store, scope, policy: () => settingsPolicy(settings, scope),
+      assessor: { request: () => {} },
+      executor: { start: () => {}, wake: () => {}, stop: () => {} },
+      outbox: { send: () => {}, withdrawDrafts: () => {} },
+    })
+    const trigger = {
+      id: 'github:comment:stop', source: 'github', threads: [{ source: 'github', id: 'issue:2' }],
+      actor: { source: 'github', id: 'alice' }, human: true as const, addressed: 'mention' as const,
+      at: new Date().toISOString(), text: '/agent summarize x',
+      channel: { source: 'github', thread: 'issue:2', address: { number: '2' } }, meta: {},
+    }
+    engine.receive(trigger)
+    engine.evaluateDue()
+    engine.decide(trigger.id, {
+      kind: 'accept', title: 't', scope: 's', capability: 'read', reason: 'explicit', evalId: store.threads.get('github:issue:2')!.evaluating!.id,
+    })
+    const ticket = store.tickets.open()[0]!
+    engine.assignmentStarted(ticket.id, ticket.assignments[0]!.id, { directory: '/tmp', branch: 'b', base: 'main', session: 's', backend: 'mock' })
+    engine.turnEnded(ticket.id, ticket.assignments[0]!.id, { report: { state: 'failed', summary: 'boom' } })
+    engine.stopTicket(ticket.id)
+
+    const wd = new Watchdog({ engine: () => engine, store, settings: () => settings, session })
+    const actions = await wd.tick()
+    assert.ok(!actions.some(item => item.action === 'retry'))
   })
 })

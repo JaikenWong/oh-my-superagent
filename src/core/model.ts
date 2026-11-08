@@ -148,6 +148,8 @@ export interface Report {
 /** Binding of a Ticket to one Executor run; it has its own lifecycle, independent of the Ticket's. */
 export interface Assignment {
   id: string
+  /** Monotonic per Ticket; stale workers must carry a matching generation for their Report to apply. */
+  generation: number
   state: AssignmentState
   createdAt: string
   startedAt?: string
@@ -207,6 +209,8 @@ export interface Ticket {
   execution?: Execution
   /** The latest failed delivery, until a delivery succeeds. */
   delivery?: { error: string; at: string }
+  /** How many automatic/host retries have been started; Stop does not clear this. */
+  retries?: number
   createdAt: string
   updatedAt: string
 }

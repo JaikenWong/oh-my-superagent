@@ -11,6 +11,7 @@
     "start": "node src/main.ts",
     "demo": "node scripts/demo-setup.ts && node src/main.ts --config examples/demo.config.json",
     "demo:real": "node scripts/demo-setup.ts && node src/main.ts --config examples/real.config.json",
+    "demo:dsh": "node scripts/demo-setup.ts && node src/main.ts --config examples/dsh.config.json",
     "simulate": "node scripts/simulate.ts",
     "test": "node --test --test-concurrency=1 \"tests/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"

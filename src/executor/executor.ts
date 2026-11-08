@@ -16,6 +16,7 @@ import { Later, type Effects } from '../store/effects.ts'
 import type { OutboxStore } from '../store/outbox.ts'
 import type { Store } from '../store/store.ts'
 import { BACKENDS, type AgentBackend } from './agents.ts'
+import { blockedCommandsFor, blockedGitSubcommands, allowsFileWrite } from './capability.ts'
 import { renderTurn } from './prompt.ts'
 import { extractReport } from './report.ts'
 import { captureDiff, commitAll, installShims, prepareWorktree } from './workspace.ts'
@@ -46,7 +47,6 @@ export class WorkerExecutor implements Executor {
   readonly #running = new Map<string, { child: ChildProcess; assignmentId: string }>()
   /** Slots held by launches still preparing. */
   readonly #reserved = new Set<string>()
-  #shims?: Promise<string>
 
   constructor(deps: ExecutorDeps) { this.#d = deps }
 
@@ -130,8 +130,14 @@ export class WorkerExecutor implements Executor {
 
   async #env(ticket: Ticket, directory: string): Promise<NodeJS.ProcessEnv> {
     const settings = this.#d.settings()
-    this.#shims ??= installShims(join(this.#d.deployment.stateDir, 'shims'), settings.executor.blockedCommands)
-    const shims = await this.#shims
+    const capability = ticket.mandate.capability
+    // Per-capability shim dir so read Mandates cannot share a write-era git wrapper.
+    const shimDir = join(this.#d.deployment.stateDir, 'shims', capability)
+    const shims = await installShims(
+      shimDir,
+      blockedCommandsFor(capability, settings.executor.blockedCommands),
+      blockedGitSubcommands(capability),
+    )
     const env: NodeJS.ProcessEnv = {}
     for (const [name, value] of Object.entries(process.env)) if (!SECRET_ENV.test(name)) env[name] = value
     for (const [name, variable] of Object.entries(this.#variables(ticket, directory))) env[name] = variable.value
@@ -139,12 +145,16 @@ export class WorkerExecutor implements Executor {
     return env
   }
   #variables(ticket: Ticket, directory: string): Record<string, ExecutionVariable> {
+    const capability = ticket.mandate.capability
     return {
       SUPERAGENT_DIR: { value: directory, description: "The Ticket's directory, a git worktree" },
       SUPERAGENT_NAME: { value: ticket.name, description: "The Ticket's short name, also its branch name after superagent/" },
       SUPERAGENT_TICKET: { value: ticket.id, description: "The Ticket's id" },
-      SUPERAGENT_CAPABILITY: { value: ticket.mandate.capability, description: 'read: analyse only; write: may change code and commit' },
-      SUPERAGENT_BLOCKED_COMMANDS: { value: [...this.#d.settings().executor.blockedCommands, 'git push'].join(','), description: 'Commands workers may not run' },
+      SUPERAGENT_CAPABILITY: { value: capability, description: 'read: analyse only; write: may change code and commit — host-enforced' },
+      SUPERAGENT_BLOCKED_COMMANDS: {
+        value: [...blockedCommandsFor(capability, this.#d.settings().executor.blockedCommands), ...blockedGitSubcommands(capability).map(s => `git ${s}`)].join(','),
+        description: 'Commands / git subcommands workers may not run (host shim)',
+      },
       ...this.#d.variables(),
     }
   }
@@ -185,6 +195,7 @@ export class WorkerExecutor implements Executor {
     const spec = {
       directory: execution.directory, prompt: rendered.prompt, sessionId: execution.session, resume: !!session?.turns, capability: ticket.mandate.capability,
       lastMessagePath: join(paths.context, 'last-message.md'), extraArgs: settings.executor.agentArgs,
+      ...settings.executor.dshRoot ? { dshRoot: settings.executor.dshRoot } : {},
     }
     const command = backend.command(spec)
     const prefix = join(paths.artifacts, `a${ticket.assignments.indexOf(assignment)}-turn${turnNo}`)
@@ -229,9 +240,9 @@ export class WorkerExecutor implements Executor {
     const report = result.report
     try {
       if (report?.pullRequest) {
-        if (ticket.mandate.capability !== 'write') {
+        if (!allowsFileWrite(ticket.mandate.capability)) {
           delete report.pullRequest
-          report.summary += ' (The proposed pull request was dropped: this Ticket is read-only.)'
+          report.summary += ' (The proposed pull request was dropped: this Ticket is read-only; host Execution Policy.)'
         } else if (!await commitAll(execution.directory, execution.base, report.pullRequest.title, 'superagent <superagent@localhost>')) {
           delete report.pullRequest
           if (report.state === 'ready') Object.assign(report, { state: 'blocked', summary: `${report.summary} (Blocked by the host: a pull request was proposed but the branch has no changes.)` })
@@ -241,7 +252,9 @@ export class WorkerExecutor implements Executor {
       if (diff || untracked.length) {
         writeFileSync(`${prefix}.diff`, `${diff}${untracked.length ? `\n# untracked\n${untracked.join('\n')}\n` : ''}`)
         artifacts.push({ kind: 'diff', path: `${prefix}.diff`, summary: stat || `${untracked.length} untracked file(s)` })
-        if (report && ticket.mandate.capability === 'read') report.summary += ' (Note: this read-only Ticket left changes in its directory.)'
+        if (report && !allowsFileWrite(ticket.mandate.capability)) {
+          report.summary += ' (Host note: read Mandate left dirty worktree — Execution Policy should have blocked writes.)'
+        }
       }
     } catch (error) {
       if (report) report.summary += ` (Collecting the diff failed: ${message(error)})`

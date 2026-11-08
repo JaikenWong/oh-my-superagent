@@ -27,7 +27,10 @@ route('GET', '/api/overview', runtime => views.overview(runtime))
 route('GET', '/api/tickets', (runtime, _, __, query) => views.tickets(runtime, query.get('filter') ?? 'open'))
 route('GET', '/api/tickets/:id', (runtime, { id }) => views.ticketDetail(runtime, id!) ?? missing('ticket'))
 route('POST', '/api/tickets/:id/stop', (runtime, { id }, body) => { runtime.engine.stopTicket(id!, field(body, 'reason')); return { ok: true } })
-route('POST', '/api/tickets/:id/retry', (runtime, { id }) => { runtime.engine.retryTicket(id!); return { ok: true } })
+route('POST', '/api/tickets/:id/retry', (runtime, { id }) => {
+  runtime.engine.retryTicket(id!, runtime.settings.executor.maxRetries)
+  return { ok: true }
+})
 route('POST', '/api/tickets/:id/input', (runtime, { id }, body) => {
   const value = field(body, 'text')?.trim()
   if (!value) throw new UserError('emptyText')

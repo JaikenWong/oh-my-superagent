@@ -72,6 +72,7 @@ export class Runtime {
     this.engine = engine
     this.watchdog = new Watchdog({
       engine: getEngine, store: this.store, settings: () => this.#settings, session: this.router.session,
+      outbox: this.outbox,
       ...this.#watchdogMs > 0 ? { intervalMs: this.#watchdogMs } : {},
     })
     this.router.install()
@@ -94,6 +95,7 @@ export class Runtime {
         console.error(`source ${source.id}: ${text}`)
       })
     }
+    this.outbox.recoverInFlight()
     this.engine.recover()
     this.effects.start(this.#passMs)
     this.#timer = setInterval(() => this.pass(), this.#passMs)
